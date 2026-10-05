@@ -1,0 +1,60 @@
+import requests
+import xml.etree.ElementTree as ET
+import warnings
+import os
+import csv
+
+# PRTG servers often use self-signed certificates, so SSL warnings are suppressed.
+warnings.filterwarnings("ignore")
+
+PRTG_URL = "https://YOUR_PRTG_SERVER"           # Example: https://10.0.0.X or https://prtg.example.com
+API_KEY = os.environ.get("PRTG_API_KEY")         # Set this as an environment variable, never hardcode it
+KEYWORDS = ["Example Keyword", "Example Keyword", "Example Keyword"] # This looks at the comments section
+OUTPUT_FILE = "decomm_devices.csv"
+
+
+def get_sensors():
+    url = (
+        f"{PRTG_URL}/api/table.xml?content=sensors"
+        f"&columns=objid,device,parentid,message,status"
+        f"&count=5000&apitoken={API_KEY}"
+    )
+    response = requests.get(url, verify=False)
+    return ET.fromstring(response.text)
+
+
+def main():
+    if not API_KEY:
+        print("Error: PRTG_API_KEY environment variable not set.")
+        return
+
+    print("Fetching sensors...")
+    root = get_sensors()
+
+    device_ids = set()
+    rows = []
+    for sensor in root.findall("item"):
+        message = sensor.findtext("message_raw", "")
+        parentid = sensor.findtext("parentid", "")
+        device = sensor.findtext("device", "")
+        if any(keyword.lower() in message.lower() for keyword in KEYWORDS):
+            print(f"Match found - Device: {device} | Device ID: {parentid} | Message: {message}")
+            if parentid not in device_ids:
+                device_ids.add(parentid)
+                rows.append({"Device": device, "Device ID": parentid, "Message": message})
+
+    if not device_ids:
+        print("No matching devices found.")
+        return
+
+    with open(OUTPUT_FILE, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["Device", "Device ID", "Message"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"\nTotal devices that would be deleted: {len(device_ids)}")
+    print(f"Results exported to: {OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+    main()
