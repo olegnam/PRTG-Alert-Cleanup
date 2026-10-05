@@ -1,4 +1,0 @@
-# Never commit exported results or secrets
-*.csv
-.env
-__pycache__/
